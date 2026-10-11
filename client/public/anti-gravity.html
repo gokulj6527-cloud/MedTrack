@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Anti-Gravity Schedule</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f8fafc;
+      color: #1e293b;
+      overflow: hidden; /* prevent scrolling when physics is on */
+    }
+
+    /* Top Navigation */
+    .top-nav {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 2rem;
+      z-index: 10;
+    }
+
+    .top-nav h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      color: #047857;
+    }
+
+    .login-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .login-container img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 2px solid #059669;
+      object-fit: cover;
+    }
+
+    .login-container span {
+      font-weight: 500;
+      color: #0f172a;
+    }
+
+    /* Main Content */
+    .content {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 90%;
+      max-width: 800px;
+      z-index: 5;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1rem;
+    }
+
+    button#toggle-btn {
+      background-color: #059669;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      transition: background-color 0.2s;
+    }
+    
+    button#toggle-btn:hover {
+      background-color: #047857;
+    }
+
+    /* Table Styling */
+    .table-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    th {
+      background-color: #059669;
+      color: white;
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    td {
+      font-size: 1rem;
+      color: #334155; /* High contrast dark gray text for visibility */
+      font-weight: 500;
+    }
+
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+
+    /* Physics Canvas */
+    #physics-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1; /* Below the UI until activated */
+      pointer-events: none; /* Initially ignore clicks */
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- Background Canvas for Matter.js -->
+  <div id="physics-canvas"></div>
+
+  <!-- Real DOM Elements -->
+  <div id="ui-layer">
+    <div class="top-nav">
+      <h1>Schedule Hub</h1>
+      <div class="login-container">
+        <span>John Doe</span>
+        <!-- Realistic Person Icon -->
+        <img src="https://i.pravatar.cc/150?img=11" alt="User Avatar" />
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="controls">
+        <button id="toggle-btn">Toggle Anti-Gravity</button>
+      </div>
+
+      <div class="table-container" id="schedule-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Task</th>
+              <th>Assignee</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>09:00 AM</td>
+              <td>Morning Standup</td>
+              <td>All Staff</td>
+              <td>Completed</td>
+            </tr>
+            <tr>
+              <td>10:30 AM</td>
+              <td>Inventory Check</td>
+              <td>Sarah J.</td>
+              <td>In Progress</td>
+            </tr>
+            <tr>
+              <td>01:00 PM</td>
+              <td>Supplier Meeting</td>
+              <td>David W.</td>
+              <td>Pending</td>
+            </tr>
+            <tr>
+              <td>03:45 PM</td>
+              <td>Quality Assurance</td>
+              <td>Emily R.</td>
+              <td>Scheduled</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let isAntiGravityOn = false;
+    let engine, render, runner;
+
+    const toggleBtn = document.getElementById('toggle-btn');
+    const uiLayer = document.getElementById('ui-layer');
+    const scheduleTable = document.getElementById('schedule-table');
+    const canvasContainer = document.getElementById('physics-canvas');
+
+    toggleBtn.addEventListener('click', () => {
+      if (!isAntiGravityOn) {
+        startAntiGravity();
+        isAntiGravityOn = true;
+        toggleBtn.textContent = "Reset View";
+        // Bring canvas forward
+        canvasContainer.style.zIndex = "100";
+        canvasContainer.style.pointerEvents = "auto";
+      } else {
+        location.reload(); // Simple way to reset
+      }
+    });
+
+    function startAntiGravity() {
+      // 1. Setup Matter.js World
+      const Engine = Matter.Engine,
+            Render = Matter.Render,
+            Runner = Matter.Runner,
+            Bodies = Matter.Bodies,
+            Composite = Matter.Composite,
+            Mouse = Matter.Mouse,
+            MouseConstraint = Matter.MouseConstraint;
+
+      engine = Engine.create();
+      // Set zero gravity for drifting
+      engine.world.gravity.y = 0; 
+      engine.world.gravity.x = 0;
+
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      render = Render.create({
+        element: canvasContainer,
+        engine: engine,
+        options: {
+          width,
+          height,
+          background: 'transparent',
+          wireframes: false
+        }
+      });
+
+      // 2. Add Screen Boundaries (Walls)
+      const wallOptions = { isStatic: true, render: { fillStyle: 'transparent' } };
+      const thickness = 60;
+      Composite.add(engine.world, [
+        Bodies.rectangle(width / 2, -thickness/2, width, thickness, wallOptions), // Top
+        Bodies.rectangle(width / 2, height + thickness/2, width, thickness, wallOptions), // Bottom
+        Bodies.rectangle(-thickness/2, height / 2, thickness, height, wallOptions), // Left
+        Bodies.rectangle(width + thickness/2, height / 2, thickness, height, wallOptions) // Right
+      ]);
+
+      // 3. Convert DOM Table cells to Physics Bodies
+      const cells = scheduleTable.querySelectorAll('th, td');
+      
+      cells.forEach((cell) => {
+        const rect = cell.getBoundingClientRect();
+        
+        // Skip hidden elements
+        if (rect.width === 0 || rect.height === 0) return;
+
+        // Determine styling based on if it's a TH or TD
+        const isHeader = cell.tagName === 'TH';
+        const bgColor = isHeader ? '#059669' : '#ffffff';
+        const textColor = isHeader ? '#ffffff' : '#334155';
+        const textContent = cell.innerText;
+
+        // Center X/Y coordinates for Matter.js Body
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+
+        const body = Bodies.rectangle(x, y, rect.width, rect.height, {
+          restitution: 0.8, // Bounciness
+          friction: 0.05,
+          frictionAir: 0.02, // Some air resistance to stop infinite spinning
+          render: {
+            fillStyle: bgColor,
+            strokeStyle: '#e2e8f0',
+            lineWidth: isHeader ? 0 : 1
+          },
+          // Custom property to draw text in Matter.js rendering loop
+          customText: {
+            content: textContent,
+            color: textColor,
+            font: '1rem sans-serif'
+          }
+        });
+
+        // Apply a tiny random force to make them drift apart slowly
+        const randomForceX = (Math.random() - 0.5) * 0.005;
+        const randomForceY = (Math.random() - 0.5) * 0.005;
+        Matter.Body.applyForce(body, body.position, { x: randomForceX, y: randomForceY });
+        
+        // Random spin
+        Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.02);
+
+        Composite.add(engine.world, body);
+      });
+
+      // 4. Hide original DOM table
+      scheduleTable.style.visibility = 'hidden';
+      document.querySelector('.top-nav').style.visibility = 'hidden';
+
+      // 5. Add Mouse Interaction (Drag & Throw)
+      const mouse = Mouse.create(render.canvas);
+      const mouseConstraint = MouseConstraint.create(engine, {
+        mouse: mouse,
+        constraint: {
+          stiffness: 0.2,
+          render: { visible: false }
+        }
+      });
+      Composite.add(engine.world, mouseConstraint);
+      render.mouse = mouse; // Keep the mouse in sync with rendering
+
+      // Custom rendering hook to draw text on bodies
+      Matter.Events.on(render, 'afterRender', function() {
+        const context = render.context;
+        const bodies = Composite.allBodies(engine.world);
+
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+
+        bodies.forEach(body => {
+          if (body.customText) {
+            context.save();
+            // Move to body position
+            context.translate(body.position.x, body.position.y);
+            // Rotate to body angle
+            context.rotate(body.angle);
+            // Draw text
+            context.fillStyle = body.customText.color;
+            context.font = body.customText.font;
+            context.fillText(body.customText.content, 0, 0);
+            context.restore();
+          }
+        });
+      });
+
+      // 6. Start Physics & Rendering
+      Render.run(render);
+      runner = Runner.create();
+      Runner.run(runner, engine);
+    }
+  </script>
+</body>
+</html>
