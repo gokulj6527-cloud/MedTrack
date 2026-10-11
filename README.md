@@ -6,7 +6,7 @@ MedTrack is a database-driven platform that tracks every medicine batch from the
 
 ## 1. ER Diagram (Chen Notation)
 
-![MedTrack ER Diagram](images/medtrack-er-diagram.png)
+![MedTrack ER Diagram](medtrack-er-diagram.png)
 
 > **Setup note:** save the diagram image as `images/medtrack-er-diagram.png` next to this README so the image above renders.
 
