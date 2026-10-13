@@ -10,8 +10,7 @@ INSERT INTO `roles` (`role_id`, `role_name`, `description`) VALUES
 (1, 'ADMIN', 'System Administrator with full system monitoring and governance control'),
 (2, 'MANUFACTURER', 'Pharmaceutical Manufacturer producing medicines and batch records'),
 (3, 'DISTRIBUTOR', 'Logistics & Warehouse Distributor supplying medicines to pharmacies'),
-(4, 'PHARMACIST', 'Licensed Pharmacist managing pharmacy inventory and safe patient dispensing'),
-(5, 'USER', 'General medicine recipient / customer with limited public catalog access');
+(4, 'PHARMACIST', 'Licensed Pharmacist managing pharmacy inventory and safe patient dispensing');
 
 -- 2. SEED USERS
 -- Standard Password Hashing:
@@ -47,8 +46,7 @@ INSERT INTO `users` (`user_id`, `username`, `email`, `password_hash`, `role_id`,
 ('PHARM007', 'neha_pharm', 'neha.singh@primechemists.com', '$2a$10$42w79B3gE4cSmP/.JbA3t.0r/s7b6Q5vY0o0Z3g1fHk8L2n1P4q3W', 4, 'APPROVED'),
 ('PHARM008', 'aditya_pharm', 'aditya.verma@metrohealth.com', '$2a$10$42w79B3gE4cSmP/.JbA3t.0r/s7b6Q5vY0o0Z3g1fHk8L2n1P4q3W', 4, 'APPROVED'),
 ('PHARM009', 'pooja_pharm', 'pooja.nair@greenfieldpharma.com', '$2a$10$42w79B3gE4cSmP/.JbA3t.0r/s7b6Q5vY0o0Z3g1fHk8L2n1P4q3W', 4, 'APPROVED'),
-('PHARM010', 'vikram_pharm', 'vikram.joshi@apexpharmacy.com', '$2a$10$42w79B3gE4cSmP/.JbA3t.0r/s7b6Q5vY0o0Z3g1fHk8L2n1P4q3W', 4, 'APPROVED'),
-('USER001', 'demo_user', 'user@medtrack.com', '$2a$10$42w79B3gE4cSmP/.JbA3t.0r/s7b6Q5vY0o0Z3g1fHk8L2n1P4q3W', 5, 'APPROVED');
+('PHARM010', 'vikram_pharm', 'vikram.joshi@apexpharmacy.com', '$2a$10$42w79B3gE4cSmP/.JbA3t.0r/s7b6Q5vY0o0Z3g1fHk8L2n1P4q3W', 4, 'APPROVED');
 
 -- 3. SEED ORGANIZATIONS
 -- Manufacturers
@@ -80,17 +78,17 @@ INSERT INTO `pharmacies` (`pharmacy_id`, `user_id`, `pharmacy_name`, `license_nu
 ('PHM_010', 'PHARM010', 'Apex Pharmacy', 'PHM-2024-110', 'Vikram Joshi', 'vikram.joshi@apexpharmacy.com', '+91 9988776660', '90 Hazratganj, Lucknow', 'APPROVED');
 
 -- 4. SEED MEDICINES
-INSERT INTO `medicines` (`medicine_id`, `manufacturer_id`, `medicine_name`, `generic_name`, `brand_name`, `dosage_form`, `strength`, `description`, `prescription_required`, `storage_temperature_min`, `storage_temperature_max`, `unit_price`, `category`, `min_stock_level`, `status`) VALUES
-('MED_001', 'MFR_001', 'Paracetamol 650', 'Paracetamol', 'Dolo 650', 'Tablet', '650 mg', 'Analgesic and antipyretic medication used to treat fever and mild-to-moderate pain.', FALSE, 15.00, 25.00, 12.50, 'Analgesic', 200, 'ACTIVE'),
-('MED_002', 'MFR_001', 'Amoxicillin 500', 'Amoxicillin', 'Mox 500', 'Capsule', '500 mg', 'Penicillin-type antibiotic used to treat bacterial infections.', TRUE, 15.00, 25.00, 45.00, 'Antibiotic', 150, 'ACTIVE'),
-('MED_003', 'MFR_002', 'Cetirizine 10', 'Cetirizine Hydrochloride', 'Cetzine 10', 'Tablet', '10 mg', 'Antihistamine medication used to treat allergic rhinitis and hives.', FALSE, 15.00, 30.00, 18.00, 'Antihistamine', 120, 'ACTIVE'),
-('MED_004', 'MFR_002', 'Ibuprofen 400', 'Ibuprofen', 'Brufen 400', 'Tablet', '400 mg', 'Nonsteroidal anti-inflammatory drug (NSAID) for pain, fever, and inflammation.', FALSE, 15.00, 25.00, 22.00, 'NSAID', 150, 'ACTIVE'),
-('MED_005', 'MFR_003', 'Azithromycin 500', 'Azithromycin', 'Azee 500', 'Tablet', '500 mg', 'Macrolide antibiotic used for respiratory and soft tissue infections.', TRUE, 15.00, 25.00, 115.00, 'Antibiotic', 80, 'ACTIVE'),
-('MED_006', 'MFR_003', 'Metformin 500', 'Metformin Hydrochloride', 'Glycomet 500', 'Tablet', '500 mg', 'First-line medication for the treatment of type 2 diabetes.', TRUE, 15.00, 25.00, 28.00, 'Antidiabetic', 100, 'ACTIVE'),
-('MED_007', 'MFR_001', 'Omeprazole 20', 'Omeprazole', 'Omez 20', 'Capsule', '20 mg', 'Proton pump inhibitor reducing stomach acid production.', FALSE, 15.00, 25.00, 52.00, 'Gastrointestinal', 100, 'ACTIVE'),
-('MED_008', 'MFR_002', 'Amlodipine 5', 'Amlodipine Besylate', 'Stamlo 5', 'Tablet', '5 mg', 'Calcium channel blocker used to treat high blood pressure and angina.', TRUE, 15.00, 30.00, 34.00, 'Cardiovascular', 80, 'ACTIVE'),
-('MED_009', 'MFR_003', 'Atorvastatin 10', 'Atorvastatin Calcium', 'Atorva 10', 'Tablet', '10 mg', 'Statin medication used to lower cholesterol and prevent cardiovascular disease.', TRUE, 15.00, 25.00, 85.00, 'Cardiovascular', 80, 'ACTIVE'),
-('MED_010', 'MFR_001', 'Insunorm Cold-Chain', 'Human Insulin NPH', 'Insunorm 100IU', 'Injection', '100 IU/ml', 'Biologics insulin requiring cold-chain temperature monitoring (2°C to 8°C).', TRUE, 2.00, 8.00, 320.00, 'Biologic', 40, 'ACTIVE');
+INSERT INTO `medicines` (`medicine_id`, `manufacturer_id`, `medicine_name`, `generic_name`, `brand_name`, `dosage_form`, `strength`, `description`, `prescription_required`, `storage_temperature_min`, `storage_temperature_max`, `unit_price`, `status`) VALUES
+('MED_001', 'MFR_001', 'Paracetamol 650', 'Paracetamol', 'Dolo 650', 'Tablet', '650 mg', 'Analgesic and antipyretic medication used to treat fever and mild-to-moderate pain.', FALSE, 15.00, 25.00, 12.50, 'ACTIVE'),
+('MED_002', 'MFR_001', 'Amoxicillin 500', 'Amoxicillin', 'Mox 500', 'Capsule', '500 mg', 'Penicillin-type antibiotic used to treat bacterial infections.', TRUE, 15.00, 25.00, 45.00, 'ACTIVE'),
+('MED_003', 'MFR_002', 'Cetirizine 10', 'Cetirizine Hydrochloride', 'Cetzine 10', 'Tablet', '10 mg', 'Antihistamine medication used to treat allergic rhinitis and hives.', FALSE, 15.00, 30.00, 18.00, 'ACTIVE'),
+('MED_004', 'MFR_002', 'Ibuprofen 400', 'Ibuprofen', 'Brufen 400', 'Tablet', '400 mg', 'Nonsteroidal anti-inflammatory drug (NSAID) for pain, fever, and inflammation.', FALSE, 15.00, 25.00, 22.00, 'ACTIVE'),
+('MED_005', 'MFR_003', 'Azithromycin 500', 'Azithromycin', 'Azee 500', 'Tablet', '500 mg', 'Macrolide antibiotic used for respiratory and soft tissue infections.', TRUE, 15.00, 25.00, 115.00, 'ACTIVE'),
+('MED_006', 'MFR_003', 'Metformin 500', 'Metformin Hydrochloride', 'Glycomet 500', 'Tablet', '500 mg', 'First-line medication for the treatment of type 2 diabetes.', TRUE, 15.00, 25.00, 28.00, 'ACTIVE'),
+('MED_007', 'MFR_001', 'Omeprazole 20', 'Omeprazole', 'Omez 20', 'Capsule', '20 mg', 'Proton pump inhibitor reducing stomach acid production.', FALSE, 15.00, 25.00, 52.00, 'ACTIVE'),
+('MED_008', 'MFR_002', 'Amlodipine 5', 'Amlodipine Besylate', 'Stamlo 5', 'Tablet', '5 mg', 'Calcium channel blocker used to treat high blood pressure and angina.', TRUE, 15.00, 30.00, 34.00, 'ACTIVE'),
+('MED_009', 'MFR_003', 'Atorvastatin 10', 'Atorvastatin Calcium', 'Atorva 10', 'Tablet', '10 mg', 'Statin medication used to lower cholesterol and prevent cardiovascular disease.', TRUE, 15.00, 25.00, 85.00, 'ACTIVE'),
+('MED_010', 'MFR_001', 'Insunorm Cold-Chain', 'Human Insulin NPH', 'Insunorm 100IU', 'Injection', '100 IU/ml', 'Biologics insulin requiring cold-chain temperature monitoring (2°C to 8°C).', TRUE, 2.00, 8.00, 320.00, 'ACTIVE');
 
 -- 5. SEED MEDICINE COMPOSITIONS
 INSERT INTO `medicine_compositions` (`medicine_id`, `ingredient_name`, `strength`, `unit`) VALUES
@@ -107,14 +105,23 @@ INSERT INTO `medicine_compositions` (`medicine_id`, `ingredient_name`, `strength
 
 -- 6. SEED BATCHES
 -- Manufacturing / Expiry dates setup to cover: Active, Expired, Near-Expiry, Recalled
-INSERT INTO `batches` (`batch_id`, `medicine_id`, `manufacturer_id`, `batch_number`, `manufacturing_date`, `expiry_date`, `quantity_produced`, `quantity_dispatched`, `remaining_quantity`, `unit_cost`, `batch_status`) VALUES
-('BAT_001', 'MED_001', 'MFR_001', 'DOL-2024-001', '2025-01-10', '2027-01-10', 10000, 2500, 7500, 6.00, 'ACTIVE'),
-('BAT_002', 'MED_002', 'MFR_001', 'MOX-2024-002', '2025-02-01', '2026-08-01', 5000, 1500, 3500, 20.00, 'ACTIVE'),
-('BAT_003', 'MED_003', 'MFR_002', 'CET-2024-003', '2025-01-15', '2026-11-15', 8000, 0, 8000, 8.00, 'ACTIVE'),
-('BAT_004', 'MED_004', 'MFR_002', 'BRU-2024-EXP30', '2024-11-01', '2026-10-28', 4000, 0, 4000, 10.00, 'ACTIVE'),
-('BAT_005', 'MED_005', 'MFR_003', 'AZE-2023-EXPIRED', '2023-01-01', '2025-06-01', 3000, 0, 3000, 50.00, 'EXPIRED'),
-('BAT_006', 'MED_007', 'MFR_001', 'OMZ-2024-RECALL', '2024-08-01', '2026-08-01', 6000, 0, 6000, 22.00, 'RECALLED'),
-('BAT_007', 'MED_010', 'MFR_001', 'INS-2025-COLD', '2025-03-01', '2026-12-31', 2000, 500, 1500, 150.00, 'ACTIVE');
+INSERT INTO `batches` (`batch_id`, `medicine_id`, `manufacturer_id`, `batch_number`, `manufacturing_date`, `expiry_date`, `quantity_produced`, `remaining_quantity`, `unit_cost`, `batch_status`) VALUES
+-- Active normal batches
+('BAT_001', 'MED_001', 'MFR_001', 'DOL-2024-001', '2025-01-10', '2027-01-10', 10000, 8500, 6.00, 'ACTIVE'),
+('BAT_002', 'MED_002', 'MFR_001', 'MOX-2024-002', '2025-02-01', '2026-08-01', 5000, 4200, 20.00, 'ACTIVE'),
+('BAT_003', 'MED_003', 'MFR_002', 'CET-2024-003', '2025-01-15', '2026-11-15', 8000, 6800, 8.00, 'ACTIVE'),
+
+-- Near-Expiry batch (expiring within 30 days of 2026-10-07)
+('BAT_004', 'MED_004', 'MFR_002', 'BRU-2024-EXP30', '2024-11-01', '2026-10-28', 4000, 1200, 10.00, 'ACTIVE'),
+
+-- Expired batch (expiry date passed)
+('BAT_005', 'MED_005', 'MFR_003', 'AZE-2023-EXPIRED', '2023-01-01', '2025-06-01', 3000, 450, 50.00, 'EXPIRED'),
+
+-- Recalled batch
+('BAT_006', 'MED_007', 'MFR_001', 'OMZ-2024-RECALL', '2024-08-01', '2026-08-01', 6000, 2500, 22.00, 'RECALLED'),
+
+-- Cold chain batch
+('BAT_007', 'MED_010', 'MFR_001', 'INS-2025-COLD', '2025-03-01', '2026-12-31', 2000, 1500, 150.00, 'ACTIVE');
 
 -- 7. SEED INVENTORY
 INSERT INTO `inventory` (`inventory_id`, `owner_type`, `owner_id`, `batch_id`, `medicine_id`, `quantity`, `reorder_level`) VALUES
@@ -216,12 +223,3 @@ INSERT INTO `audit_logs` (`user_id`, `action`, `entity_type`, `entity_id`, `desc
 ('MAN001', 'BATCH_CREATED', 'BATCH', 'BAT_001', 'Created manufacturing production batch DOL-2024-001'),
 ('MAN001', 'RECALL_INITIATED', 'RECALL', 'RCL_001', 'Initiated Class-I recall for defective batch OMZ-2024-RECALL'),
 ('PHARM001', 'DISPENSATION_COMPLETED', 'DISPENSATION', 'DSP_001', 'Successfully dispensed prescription RX-2026-9001 to patient Sunil Kumar inside database transaction');
-
-INSERT INTO `patients` (`patient_id`, `user_id`, `full_name`, `phone`) VALUES
-('PAT_001', 'USER001', 'Demo Patient', '+91 9000000001');
-
-INSERT INTO `system_settings` (`setting_key`, `setting_value`, `description`) VALUES
-('near_expiry_days', '30', 'Days before expiry to flag near-expiry medicines'),
-('default_reorder_level', '50', 'Default low-stock reorder threshold'),
-('block_expired_supply', 'true', 'Block expired medicines from supply and dispensing'),
-('block_recalled_supply', 'true', 'Block recalled medicines from supply and dispensing');

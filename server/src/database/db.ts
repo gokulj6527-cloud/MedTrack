@@ -67,12 +67,11 @@ class SQLiteAdapter implements DatabaseAdapter {
   }
 
   private normalizeSql(sql: string): string {
+    // Basic compatibility conversion if MySQL functions like CURRENT_TIMESTAMP ON UPDATE are in schema
     return sql
       .replace(/ENGINE=InnoDB/gi, '')
       .replace(/DEFAULT CHARSET=\w+/gi, '')
-      .replace(/ON UPDATE CURRENT_TIMESTAMP/gi, '')
-      .replace(/DATE_ADD\(\s*CURRENT_DATE\s*,\s*INTERVAL\s+(\d+)\s+DAY\s*\)/gi, "date('now', '+$1 days')")
-      .replace(/DATE_SUB\(\s*CURRENT_DATE\s*,\s*INTERVAL\s+(\d+)\s+DAY\s*\)/gi, "date('now', '-$1 days')");
+      .replace(/ON UPDATE CURRENT_TIMESTAMP/gi, '');
   }
 }
 

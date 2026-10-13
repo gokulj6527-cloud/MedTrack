@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { db } from './db';
-import { migrateDatabase } from './migrate';
 
 export async function initializeDatabase(): Promise<void> {
   try {
@@ -28,8 +27,6 @@ export async function initializeDatabase(): Promise<void> {
     } else {
       console.log('✔ Database existing schema verified.');
     }
-
-    await migrateDatabase();
   } catch (error) {
     console.error('❌ Failed to initialize database:', error);
   }

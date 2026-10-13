@@ -12,10 +12,6 @@ DROP TABLE IF EXISTS `audit_logs`;
 DROP TABLE IF EXISTS `alerts`;
 DROP TABLE IF EXISTS `recalls`;
 DROP TABLE IF EXISTS `drug_interactions`;
-DROP TABLE IF EXISTS `complaints`;
-DROP TABLE IF EXISTS `stock_adjustments`;
-DROP TABLE IF EXISTS `system_settings`;
-DROP TABLE IF EXISTS `patients`;
 DROP TABLE IF EXISTS `dispensing_items`;
 DROP TABLE IF EXISTS `dispensations`;
 DROP TABLE IF EXISTS `prescription_items`;
@@ -52,7 +48,6 @@ CREATE TABLE `roles` (
 CREATE TABLE `users` (
     `user_id` VARCHAR(50) PRIMARY KEY,
     `username` VARCHAR(100) NOT NULL UNIQUE,
-    `full_name` VARCHAR(150) NULL,
     `email` VARCHAR(150) NOT NULL UNIQUE,
     `password_hash` VARCHAR(255) NOT NULL,
     `role_id` INT NOT NULL,
@@ -128,8 +123,6 @@ CREATE TABLE `medicines` (
     `storage_temperature_min` DECIMAL(5,2) DEFAULT 15.00,
     `storage_temperature_max` DECIMAL(5,2) DEFAULT 25.00,
     `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 10.00,
-    `category` VARCHAR(100) DEFAULT 'General',
-    `min_stock_level` INT DEFAULT 100,
     `status` ENUM('ACTIVE', 'DISCONTINUED') DEFAULT 'ACTIVE',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -159,10 +152,8 @@ CREATE TABLE `batches` (
     `manufacturing_date` DATE NOT NULL,
     `expiry_date` DATE NOT NULL,
     `quantity_produced` INT NOT NULL,
-    `quantity_dispatched` INT NOT NULL DEFAULT 0,
     `remaining_quantity` INT NOT NULL,
     `unit_cost` DECIMAL(10,2) NOT NULL DEFAULT 5.00,
-    `defect_notes` TEXT NULL,
     `batch_status` ENUM('ACTIVE', 'QUARANTINED', 'RECALLED', 'EXPIRED', 'DEFECTIVE', 'DISPOSED') DEFAULT 'ACTIVE',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT `fk_batches_medicine` FOREIGN KEY (`medicine_id`) REFERENCES `medicines` (`medicine_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -179,15 +170,7 @@ CREATE TABLE `inventory` (
     `batch_id` VARCHAR(50) NOT NULL,
     `medicine_id` VARCHAR(50) NOT NULL,
     `quantity` INT NOT NULL DEFAULT 0,
-    `quantity_received` INT NOT NULL DEFAULT 0,
-    `quantity_supplied` INT NOT NULL DEFAULT 0,
-    `quantity_dispensed` INT NOT NULL DEFAULT 0,
-    `quantity_reduced` INT NOT NULL DEFAULT 0,
     `reorder_level` INT DEFAULT 50,
-    `last_received_at` TIMESTAMP NULL,
-    `last_supplied_at` TIMESTAMP NULL,
-    `last_dispensed_at` TIMESTAMP NULL,
-    `temperature_status` VARCHAR(30) DEFAULT 'NORMAL',
     `last_updated` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT `fk_inventory_batch` FOREIGN KEY (`batch_id`) REFERENCES `batches` (`batch_id`) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT `fk_inventory_medicine` FOREIGN KEY (`medicine_id`) REFERENCES `medicines` (`medicine_id`) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -279,7 +262,6 @@ CREATE TABLE `prescriptions` (
     `pharmacy_id` VARCHAR(50) NOT NULL,
     `prescription_number` VARCHAR(100) NOT NULL UNIQUE,
     `patient_name` VARCHAR(150) NOT NULL,
-    `patient_user_id` VARCHAR(50) NULL,
     `doctor_name` VARCHAR(150) NOT NULL,
     `prescription_date` DATE NOT NULL,
     `status` ENUM('PENDING', 'VERIFIED', 'DISPENSED', 'CANCELLED') DEFAULT 'VERIFIED',
@@ -390,61 +372,4 @@ CREATE TABLE `audit_logs` (
     `description` TEXT NOT NULL,
     `timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT `fk_audit_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ----------------------------------------------------------------------------
--- 23. PATIENTS (general USER role)
--- ----------------------------------------------------------------------------
-CREATE TABLE `patients` (
-    `patient_id` VARCHAR(50) PRIMARY KEY,
-    `user_id` VARCHAR(50) NOT NULL UNIQUE,
-    `full_name` VARCHAR(150) NOT NULL,
-    `phone` VARCHAR(30),
-    `date_of_birth` DATE,
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT `fk_patients_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ----------------------------------------------------------------------------
--- 24. COMPLAINTS / COUNTERFEIT REPORTS
--- ----------------------------------------------------------------------------
-CREATE TABLE `complaints` (
-    `complaint_id` VARCHAR(50) PRIMARY KEY,
-    `user_id` VARCHAR(50) NOT NULL,
-    `medicine_id` VARCHAR(50),
-    `batch_number` VARCHAR(100),
-    `complaint_type` VARCHAR(50) NOT NULL DEFAULT 'QUALITY',
-    `description` TEXT NOT NULL,
-    `status` VARCHAR(30) DEFAULT 'OPEN',
-    `admin_notes` TEXT,
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT `fk_complaints_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ----------------------------------------------------------------------------
--- 25. STOCK ADJUSTMENTS (damage, missing, quarantine reductions)
--- ----------------------------------------------------------------------------
-CREATE TABLE `stock_adjustments` (
-    `adjustment_id` VARCHAR(50) PRIMARY KEY,
-    `inventory_id` VARCHAR(50) NOT NULL,
-    `batch_id` VARCHAR(50) NOT NULL,
-    `owner_type` VARCHAR(30) NOT NULL,
-    `owner_id` VARCHAR(50) NOT NULL,
-    `quantity_change` INT NOT NULL,
-    `reason` VARCHAR(100) NOT NULL,
-    `notes` TEXT,
-    `performed_by` VARCHAR(50) NOT NULL,
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT `fk_adjust_inventory` FOREIGN KEY (`inventory_id`) REFERENCES `inventory` (`inventory_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ----------------------------------------------------------------------------
--- 26. SYSTEM SETTINGS
--- ----------------------------------------------------------------------------
-CREATE TABLE `system_settings` (
-    `setting_key` VARCHAR(100) PRIMARY KEY,
-    `setting_value` VARCHAR(255) NOT NULL,
-    `description` TEXT,
-    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `updated_by` VARCHAR(50)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

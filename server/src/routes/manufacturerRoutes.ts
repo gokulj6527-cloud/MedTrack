@@ -3,9 +3,6 @@ import { db } from '../database/db';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { logAuditAction } from '../utils/auditLogger';
-import { uid } from '../utils/ids';
-import { denyIfMissingOrg, orgIdFor } from '../utils/orgAccess';
-import { blockedBatchReason, MEDICINE_MASTER_SQL, PRODUCTION_BATCH_SQL } from '../utils/stockRules';
 
 const router = Router();
 
@@ -14,19 +11,20 @@ router.use(requireAuth, requireRole(['MANUFACTURER', 'ADMIN']));
 // GET /api/manufacturer/medicines
 router.get('/medicines', async (req: AuthRequest, res) => {
   try {
-    const orgId = orgIdFor(req, 'manufacturer_id');
-    let sql = `${MEDICINE_MASTER_SQL}`;
+    const orgId = req.user?.organization_id || req.query.manufacturer_id;
+    let sql = `
+      SELECT m.*, mfr.company_name AS manufacturer_name 
+      FROM medicines m 
+      JOIN manufacturers mfr ON m.manufacturer_id = mfr.manufacturer_id
+    `;
     const params: any[] = [];
 
-    if (req.user?.role !== 'ADMIN') {
+    if (orgId && req.user?.role !== 'ADMIN') {
       sql += ` WHERE m.manufacturer_id = ?`;
       params.push(orgId);
-    } else if (req.query.manufacturer_id) {
-      sql += ` WHERE m.manufacturer_id = ?`;
-      params.push(req.query.manufacturer_id);
     }
 
-    sql += ` ORDER BY m.medicine_name ASC`;
+    sql += ` ORDER BY m.created_at DESC`;
     const medicines = await db.query(sql, params);
 
     // Fetch compositions for each medicine
@@ -54,8 +52,6 @@ router.post('/medicines', async (req: AuthRequest, res) => {
       storage_temperature_min,
       storage_temperature_max,
       unit_price,
-      category,
-      min_stock_level,
       compositions
     } = req.body;
 
@@ -65,15 +61,11 @@ router.post('/medicines', async (req: AuthRequest, res) => {
       return res.status(400).json({ success: false, message: 'All required medicine fields must be provided.' });
     }
 
-    if (req.user?.role === 'MANUFACTURER' && req.user.organization_id !== manufacturer_id) {
-      return res.status(403).json({ success: false, message: 'Cannot create medicines for another manufacturer.' });
-    }
-
-    const medicine_id = uid('MED');
+    const medicine_id = `MED_${Date.now().toString().slice(-6)}`;
 
     await db.execute(
-      `INSERT INTO medicines (medicine_id, manufacturer_id, medicine_name, generic_name, brand_name, dosage_form, strength, description, prescription_required, storage_temperature_min, storage_temperature_max, unit_price, category, min_stock_level)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO medicines (medicine_id, manufacturer_id, medicine_name, generic_name, brand_name, dosage_form, strength, description, prescription_required, storage_temperature_min, storage_temperature_max, unit_price)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         medicine_id,
         manufacturer_id,
@@ -86,9 +78,7 @@ router.post('/medicines', async (req: AuthRequest, res) => {
         prescription_required ?? true,
         storage_temperature_min ?? 15.0,
         storage_temperature_max ?? 25.0,
-        unit_price ?? 10.0,
-        category || dosage_form || 'General',
-        min_stock_level ?? 100
+        unit_price ?? 10.0
       ]
     );
 
@@ -115,19 +105,21 @@ router.post('/medicines', async (req: AuthRequest, res) => {
 // GET /api/manufacturer/batches - View production batches
 router.get('/batches', async (req: AuthRequest, res) => {
   try {
-    const orgId = orgIdFor(req, 'manufacturer_id');
-    let sql = PRODUCTION_BATCH_SQL;
+    const orgId = req.user?.organization_id || req.query.manufacturer_id;
+    let sql = `
+      SELECT b.*, m.medicine_name, m.generic_name, m.brand_name, mfr.company_name as manufacturer_name
+      FROM batches b
+      JOIN medicines m ON b.medicine_id = m.medicine_id
+      JOIN manufacturers mfr ON b.manufacturer_id = mfr.manufacturer_id
+    `;
     const params: any[] = [];
 
-    if (req.user?.role !== 'ADMIN') {
+    if (orgId && req.user?.role !== 'ADMIN') {
       sql += ` WHERE b.manufacturer_id = ?`;
       params.push(orgId);
-    } else if (req.query.manufacturer_id) {
-      sql += ` WHERE b.manufacturer_id = ?`;
-      params.push(req.query.manufacturer_id);
     }
 
-    sql += ` ORDER BY b.manufacturing_date DESC`;
+    sql += ` ORDER BY b.created_at DESC`;
     const batches = await db.query(sql, params);
 
     return res.json({ success: true, count: batches.length, batches });
@@ -148,7 +140,7 @@ router.post('/batches', async (req: AuthRequest, res) => {
       unit_cost
     } = req.body;
 
-    const manufacturer_id = orgIdFor(req, 'manufacturer_id', 'manufacturer_id');
+    const manufacturer_id = req.user?.organization_id || req.body.manufacturer_id;
 
     if (!medicine_id || !batch_number || !manufacturing_date || !expiry_date || !quantity_produced) {
       return res.status(400).json({ success: false, message: 'All batch parameters are required.' });
@@ -176,30 +168,22 @@ router.post('/batches', async (req: AuthRequest, res) => {
       });
     }
 
-    if (Number(quantity_produced) <= 0) {
-      return res.status(400).json({ success: false, message: 'Quantity produced must be a positive integer.' });
-    }
+    const batch_id = `BAT_${Date.now().toString().slice(-6)}`;
 
-    const ownedMed = await db.queryOne<any>('SELECT medicine_id, manufacturer_id FROM medicines WHERE medicine_id = ?', [medicine_id]);
-    if (!ownedMed) return res.status(404).json({ success: false, message: 'Medicine not found.' });
-    if (req.user?.role === 'MANUFACTURER' && ownedMed.manufacturer_id !== manufacturer_id) {
-      return res.status(403).json({ success: false, message: 'Cannot create batches for another manufacturer medicine.' });
-    }
-
-    const batch_id = uid('BAT');
-
+    // Create batch & seed manufacturer inventory inside database transaction
     await db.transaction(async (tx) => {
       await tx.execute(
-        `INSERT INTO batches (batch_id, medicine_id, manufacturer_id, batch_number, manufacturing_date, expiry_date, quantity_produced, quantity_dispatched, remaining_quantity, unit_cost, batch_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'ACTIVE')`,
+        `INSERT INTO batches (batch_id, medicine_id, manufacturer_id, batch_number, manufacturing_date, expiry_date, quantity_produced, remaining_quantity, unit_cost, batch_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')`,
         [batch_id, medicine_id, manufacturer_id, batch_number, manufacturing_date, expiry_date, quantity_produced, quantity_produced, unit_cost || 5.0]
       );
 
-      const invId = uid('INV');
+      // Create manufacturer inventory record
+      const invId = `INV_MFR_${Date.now().toString().slice(-6)}`;
       await tx.execute(
-        `INSERT INTO inventory (inventory_id, owner_type, owner_id, batch_id, medicine_id, quantity, quantity_received, reorder_level)
-         VALUES (?, 'MANUFACTURER', ?, ?, ?, ?, ?, 100)`,
-        [invId, manufacturer_id, batch_id, medicine_id, quantity_produced, quantity_produced]
+        `INSERT INTO inventory (inventory_id, owner_type, owner_id, batch_id, medicine_id, quantity, reorder_level)
+         VALUES (?, 'MANUFACTURER', ?, ?, ?, ?, 100)`,
+        [invId, manufacturer_id, batch_id, medicine_id, quantity_produced]
       );
 
       await logAuditAction(req.user!.user_id, 'BATCH_CREATED', 'BATCH', batch_id, `Produced batch ${batch_number} (${quantity_produced} units)`, tx);
@@ -215,7 +199,7 @@ router.post('/batches', async (req: AuthRequest, res) => {
 router.post('/shipments', async (req: AuthRequest, res) => {
   try {
     const { batch_id, distributor_id, quantity } = req.body;
-    const manufacturer_id = orgIdFor(req, 'manufacturer_id', 'manufacturer_id');
+    const manufacturer_id = req.user?.organization_id || req.body.manufacturer_id;
 
     if (!batch_id || !distributor_id || !quantity || quantity <= 0) {
       return res.status(400).json({ success: false, message: 'Batch ID, distributor ID, and positive quantity are required.' });
@@ -223,53 +207,43 @@ router.post('/shipments', async (req: AuthRequest, res) => {
 
     const batch = await db.queryOne<any>('SELECT * FROM batches WHERE batch_id = ?', [batch_id]);
     if (!batch) return res.status(404).json({ success: false, message: 'Batch not found.' });
-    if (req.user?.role === 'MANUFACTURER' && batch.manufacturer_id !== manufacturer_id) {
-      return res.status(403).json({ success: false, message: 'Cannot dispatch another manufacturer batch.' });
-    }
 
-    const blocked = blockedBatchReason(batch);
-    if (blocked) return res.status(422).json({ success: false, message: blocked });
-
-    const dist = await db.queryOne<any>(`SELECT * FROM distributors WHERE distributor_id = ? AND approval_status = 'APPROVED'`, [distributor_id]);
-    if (!dist) return res.status(400).json({ success: false, message: 'Receiver must be an approved distributor.' });
-
-    const remaining = Number(batch.quantity_produced) - Number(batch.quantity_dispatched || 0);
+    // Check available manufacturer stock
     const mfrInv = await db.queryOne<any>(
       `SELECT * FROM inventory WHERE owner_type = 'MANUFACTURER' AND owner_id = ? AND batch_id = ?`,
       [manufacturer_id, batch_id]
     );
 
-    if (!mfrInv || mfrInv.quantity < quantity || remaining < quantity) {
+    if (!mfrInv || mfrInv.quantity < quantity) {
       return res.status(400).json({
         success: false,
-        message: `Cannot dispatch more than batch contains. Manufacturer stock: ${mfrInv?.quantity || 0}, Batch remaining: ${remaining}, Requested: ${quantity}`
+        message: `Insufficient manufacturer stock. Available: ${mfrInv?.quantity || 0}, Requested: ${quantity}`
       });
     }
 
-    const shipment_id = uid('SHP');
+    const shipment_id = `SHP_${Date.now().toString().slice(-6)}`;
     const tracking_number = `TRK-MFR-${Date.now().toString().slice(-6)}`;
-    const medMeta = await db.queryOne<any>('SELECT storage_temperature_max FROM medicines WHERE medicine_id = ?', [batch.medicine_id]);
-    const cold = Number(medMeta?.storage_temperature_max ?? 25) <= 8;
 
+    // Execute atomic shipment creation
     await db.transaction(async (tx) => {
+      // Decrement manufacturer stock
       await tx.execute(
-        `UPDATE inventory SET quantity = quantity - ?, quantity_supplied = COALESCE(quantity_supplied,0) + ?, last_supplied_at = CURRENT_TIMESTAMP WHERE inventory_id = ? AND quantity >= ?`,
-        [quantity, quantity, mfrInv.inventory_id, quantity]
-      );
-      await tx.execute(
-        `UPDATE batches SET quantity_dispatched = COALESCE(quantity_dispatched,0) + ?, remaining_quantity = quantity_produced - (COALESCE(quantity_dispatched,0) + ?) WHERE batch_id = ?`,
-        [quantity, quantity, batch_id]
+        `UPDATE inventory SET quantity = quantity - ? WHERE inventory_id = ?`,
+        [quantity, mfrInv.inventory_id]
       );
 
+      // Create shipment record
       await tx.execute(
         `INSERT INTO shipments (shipment_id, sender_type, sender_id, receiver_type, receiver_id, tracking_number, cold_chain_required, status)
-         VALUES (?, 'MANUFACTURER', ?, 'DISTRIBUTOR', ?, ?, ?, 'IN_TRANSIT')`,
-        [shipment_id, manufacturer_id, distributor_id, tracking_number, cold ? 1 : 0]
+         VALUES (?, 'MANUFACTURER', ?, 'DISTRIBUTOR', ?, ?, FALSE, 'IN_TRANSIT')`,
+        [shipment_id, manufacturer_id, distributor_id, tracking_number]
       );
 
+      // Create shipment item
+      const item_id = `SHP_ITM_${Date.now().toString().slice(-6)}`;
       await tx.execute(
         `INSERT INTO shipment_items (shipment_item_id, shipment_id, batch_id, quantity) VALUES (?, ?, ?, ?)`,
-        [uid('SIT'), shipment_id, batch_id, quantity]
+        [item_id, shipment_id, batch_id, quantity]
       );
 
       await logAuditAction(req.user!.user_id, 'SHIPMENT_CREATED', 'SHIPMENT', shipment_id, `Shipped ${quantity} units of batch ${batch.batch_number} to Distributor ${distributor_id}`, tx);
@@ -286,14 +260,13 @@ router.get('/distributor-network', async (req: AuthRequest, res) => {
   try {
     const mfrId = req.user?.organization_id || req.query.manufacturer_id;
     const network = await db.query(
-      `SELECT d.distributor_id, d.company_name, d.email, d.phone, d.warehouse_address, d.approval_status,
+      `SELECT d.distributor_id, d.company_name, d.email, d.phone,
               COUNT(DISTINCT s.shipment_id) as shipment_count,
               COALESCE(SUM(si.quantity), 0) as units_supplied
        FROM distributors d
-       LEFT JOIN shipments s ON d.distributor_id = s.receiver_id AND s.sender_id = ? AND s.sender_type = 'MANUFACTURER'
+       LEFT JOIN shipments s ON d.distributor_id = s.receiver_id AND s.sender_id = ?
        LEFT JOIN shipment_items si ON s.shipment_id = si.shipment_id
-       WHERE d.approval_status = 'APPROVED'
-       GROUP BY d.distributor_id, d.company_name, d.email, d.phone, d.warehouse_address, d.approval_status`,
+       GROUP BY d.distributor_id, d.company_name, d.email, d.phone`,
       [mfrId]
     );
     return res.json({ success: true, network });
@@ -310,16 +283,11 @@ router.post('/recall', async (req: AuthRequest, res) => {
       return res.status(400).json({ success: false, message: 'Batch ID and defect reason are required.' });
     }
 
-    const batch = await db.queryOne<any>('SELECT * FROM batches WHERE batch_id = ?', [batch_id]);
-    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found.' });
-    if (req.user?.role === 'MANUFACTURER' && batch.manufacturer_id !== req.user.organization_id) {
-      return res.status(403).json({ success: false, message: 'Cannot recall another manufacturer batch.' });
-    }
-
-    const recall_id = uid('RCL');
+    const recall_id = `RCL_${Date.now().toString().slice(-6)}`;
 
     await db.transaction(async (tx) => {
-      await tx.execute(`UPDATE batches SET batch_status = 'RECALLED', defect_notes = ? WHERE batch_id = ?`, [reason, batch_id]);
+      // Set batch status to RECALLED
+      await tx.execute(`UPDATE batches SET batch_status = 'RECALLED' WHERE batch_id = ?`, [batch_id]);
 
       // Create recall record
       await tx.execute(
@@ -328,7 +296,7 @@ router.post('/recall', async (req: AuthRequest, res) => {
       );
 
       // Create system-wide alert
-      const alert_id = uid('ALT');
+      const alert_id = `ALT_${Date.now().toString().slice(-6)}`;
       await tx.execute(
         `INSERT INTO alerts (alert_id, alert_type, severity, message, related_entity_type, related_entity_id, status)
          VALUES (?, 'RECALL', 'CRITICAL', ?, 'BATCH', ?, 'UNREAD')`,
@@ -339,132 +307,6 @@ router.post('/recall', async (req: AuthRequest, res) => {
     });
 
     return res.json({ success: true, message: 'Batch recall initiated. System alerts dispatched to distributors and pharmacists.', recall_id });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.get('/dashboard', async (req: AuthRequest, res) => {
-  try {
-    const mfrId = orgIdFor(req, 'manufacturer_id');
-    if (denyIfMissingOrg(res, mfrId) && req.user?.role !== 'ADMIN') return;
-    const where = req.user?.role === 'ADMIN' && !req.query.manufacturer_id ? '1=1' : 'manufacturer_id = ?';
-    const params = where === '1=1' ? [] : [mfrId];
-    const scoped = req.user?.role === 'ADMIN' && !req.query.manufacturer_id ? '' : 'WHERE manufacturer_id = ?';
-    const sParams = scoped ? [mfrId] : [];
-
-    const totalManufacturers = req.user?.role === 'ADMIN'
-      ? (await db.queryOne<any>('SELECT COUNT(*) as cnt FROM manufacturers'))?.cnt || 0
-      : 1;
-    const produced = (await db.queryOne<any>(`SELECT COALESCE(SUM(quantity_produced),0) as sum FROM batches ${scoped}`, sParams))?.sum || 0;
-    const dispatched = (await db.queryOne<any>(`SELECT COALESCE(SUM(COALESCE(quantity_dispatched,0)),0) as sum FROM batches ${scoped}`, sParams))?.sum || 0;
-    const batchesCreated = (await db.queryOne<any>(`SELECT COUNT(*) as cnt FROM batches ${scoped}`, sParams))?.cnt || 0;
-    const medicinesProduced = (await db.queryOne<any>(`SELECT COUNT(*) as cnt FROM medicines ${scoped}`, sParams))?.cnt || 0;
-    const defective = (await db.queryOne<any>(`SELECT COUNT(*) as cnt FROM batches ${scoped ? scoped + ' AND' : 'WHERE'} batch_status IN ('DEFECTIVE','RECALLED')`, scoped ? [mfrId] : []))?.cnt || 0;
-
-    return res.json({
-      success: true,
-      stats: {
-        totalManufacturers,
-        totalMedicinesProduced: medicinesProduced,
-        totalBatchesCreated: batchesCreated,
-        totalUnitsProduced: produced,
-        totalUnitsDispatched: dispatched,
-        defectiveOrRecalledBatches: defective
-      }
-    });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.get('/shipments', async (req: AuthRequest, res) => {
-  try {
-    const mfrId = orgIdFor(req, 'manufacturer_id');
-    const shipments = await db.query(
-      `SELECT s.*, d.company_name as receiver_name
-       FROM shipments s
-       LEFT JOIN distributors d ON s.receiver_id = d.distributor_id
-       WHERE s.sender_type = 'MANUFACTURER' AND s.sender_id = ?
-       ORDER BY s.created_at DESC`,
-      [mfrId]
-    );
-    for (const shp of shipments) {
-      shp.items = await db.query(
-        `SELECT si.*, b.batch_number, m.medicine_name FROM shipment_items si
-         JOIN batches b ON si.batch_id = b.batch_id JOIN medicines m ON b.medicine_id = m.medicine_id
-         WHERE si.shipment_id = ?`,
-        [shp.shipment_id]
-      );
-    }
-    return res.json({ success: true, shipments });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.get('/profile', async (req: AuthRequest, res) => {
-  try {
-    const mfrId = orgIdFor(req, 'manufacturer_id');
-    const profile = await db.queryOne('SELECT * FROM manufacturers WHERE manufacturer_id = ?', [mfrId]);
-    return res.json({ success: true, profile });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.patch('/profile', async (req: AuthRequest, res) => {
-  try {
-    const mfrId = req.user?.organization_id;
-    if (!mfrId || req.user?.role === 'ADMIN') {
-      return res.status(400).json({ success: false, message: 'Manufacturer profile updates must be made by the manufacturer account.' });
-    }
-    const { company_name, license_number, email, phone, address } = req.body;
-    await db.execute(
-      `UPDATE manufacturers SET company_name = COALESCE(?, company_name), license_number = COALESCE(?, license_number),
-       email = COALESCE(?, email), phone = COALESCE(?, phone), address = COALESCE(?, address) WHERE manufacturer_id = ?`,
-      [company_name || null, license_number || null, email || null, phone || null, address || null, mfrId]
-    );
-    await logAuditAction(req.user!.user_id, 'PROFILE_UPDATED', 'MANUFACTURER', mfrId, 'Updated manufacturer profile');
-    return res.json({ success: true, message: 'Profile updated.' });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.patch('/medicines/:id', async (req: AuthRequest, res) => {
-  try {
-    const med = await db.queryOne<any>('SELECT * FROM medicines WHERE medicine_id = ?', [req.params.id]);
-    if (!med) return res.status(404).json({ success: false, message: 'Medicine not found.' });
-    if (req.user?.role === 'MANUFACTURER' && med.manufacturer_id !== req.user.organization_id) {
-      return res.status(403).json({ success: false, message: 'Cannot modify another manufacturer medicine.' });
-    }
-    const { medicine_name, description, unit_price, category, min_stock_level, storage_temperature_min, storage_temperature_max, prescription_required } = req.body;
-    await db.execute(
-      `UPDATE medicines SET medicine_name = COALESCE(?, medicine_name), description = COALESCE(?, description),
-       unit_price = COALESCE(?, unit_price), category = COALESCE(?, category), min_stock_level = COALESCE(?, min_stock_level),
-       storage_temperature_min = COALESCE(?, storage_temperature_min), storage_temperature_max = COALESCE(?, storage_temperature_max),
-       prescription_required = COALESCE(?, prescription_required) WHERE medicine_id = ?`,
-      [medicine_name ?? null, description ?? null, unit_price ?? null, category ?? null, min_stock_level ?? null, storage_temperature_min ?? null, storage_temperature_max ?? null, prescription_required ?? null, req.params.id]
-    );
-    await logAuditAction(req.user!.user_id, 'MEDICINE_UPDATED', 'MEDICINE', req.params.id, `Updated medicine ${req.params.id}`);
-    return res.json({ success: true, message: 'Medicine updated.' });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.post('/batches/:id/defective', async (req: AuthRequest, res) => {
-  try {
-    const { reason } = req.body;
-    const batch = await db.queryOne<any>('SELECT * FROM batches WHERE batch_id = ?', [req.params.id]);
-    if (!batch) return res.status(404).json({ success: false, message: 'Batch not found.' });
-    if (req.user?.role === 'MANUFACTURER' && batch.manufacturer_id !== req.user.organization_id) {
-      return res.status(403).json({ success: false, message: 'Cannot modify another manufacturer batch.' });
-    }
-    await db.execute(`UPDATE batches SET batch_status = 'DEFECTIVE', defect_notes = ? WHERE batch_id = ?`, [reason || 'Reported defective', req.params.id]);
-    await logAuditAction(req.user!.user_id, 'BATCH_DEFECTIVE', 'BATCH', req.params.id, reason || 'Defective');
-    return res.json({ success: true, message: 'Batch marked defective. Historical production totals were preserved.' });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
