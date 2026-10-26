@@ -8,6 +8,7 @@ import pharmacistRoutes from './routes/pharmacistRoutes';
 import reportsRoutes from './routes/reportsRoutes';
 import vivaRoutes from './routes/vivaRoutes';
 import userRoutes from './routes/userRoutes';
+import { env } from './config/env';
 
 const app = express();
 
@@ -25,12 +26,46 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/viva', vivaRoutes);
 app.use('/api/user', userRoutes);
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
+// Health check endpoint with diagnostic information
+app.get('/api/health', async (req, res) => {
+  let dbStatus = 'DISCONNECTED';
+  let dbDriver = env.DB_DRIVER;
+  let userCount = 0;
+  let dbError: string | null = null;
+
+  try {
+    const { db } = await import('./database/db');
+    const result = await db.queryOne<{ cnt: number }>('SELECT COUNT(*) as cnt FROM users').catch((err) => {
+      dbError = err.message;
+      return null;
+    });
+    if (result) {
+      dbStatus = 'CONNECTED';
+      userCount = Number(result.cnt);
+    }
+  } catch (err: any) {
+    dbError = err.message;
+  }
+
   res.json({
     status: 'ONLINE',
     system: 'MedTrack Pharmaceutical Supply Chain & Pharmacy Management System',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    database: {
+      status: dbStatus,
+      driver: dbDriver,
+      users_found: userCount,
+      error: dbError
+    }
+  });
+});
+
+// Global error handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Express Unhandled Exception:', err);
+  res.status(500).json({
+    success: false,
+    message: err?.message || 'Internal Server Error'
   });
 });
 
