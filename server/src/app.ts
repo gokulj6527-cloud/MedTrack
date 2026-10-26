@@ -7,6 +7,7 @@ import distributorRoutes from './routes/distributorRoutes';
 import pharmacistRoutes from './routes/pharmacistRoutes';
 import reportsRoutes from './routes/reportsRoutes';
 import vivaRoutes from './routes/vivaRoutes';
+import userRoutes from './routes/userRoutes';
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use('/api/distributor', distributorRoutes);
 app.use('/api/pharmacist', pharmacistRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/viva', vivaRoutes);
+app.use('/api/user', userRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

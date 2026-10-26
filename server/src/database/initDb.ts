@@ -1,32 +1,63 @@
 import fs from 'fs';
 import path from 'path';
 import { db } from './db';
+import { env } from '../config/env';
+import { migrateDatabase } from './migrate';
 
 export async function initializeDatabase(): Promise<void> {
   try {
-    // Check if roles table exists
-    const checkTable = await db.queryOne<{ name: string }>(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='roles';"
-    ).catch(() => null);
+    const driver = (env.DB_DRIVER || '').toLowerCase();
+    const isPostgres = driver === 'postgres' || driver === 'postgresql' || driver === 'supabase';
 
-    // If SQLite check failed or tables absent, execute DDL schema & seed
-    if (!checkTable) {
-      console.log('⚡ Initializing MedTrack database schema and seed records...');
+    let tableExists = false;
 
-      const schemaPath = path.join(__dirname, '../../../database/schema.sql');
-      const seedPath = path.join(__dirname, '../../../database/seed.sql');
+    if (isPostgres) {
+      // For Supabase PostgreSQL, check information_schema
+      const checkTable = await db.queryOne<{ table_name: string }>(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'roles';"
+      ).catch(() => null);
+      tableExists = !!checkTable;
+    } else if (driver === 'mysql') {
+      const checkTable = await db.queryOne<{ TABLE_NAME: string }>(
+        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'roles';",
+        [env.DB_NAME]
+      ).catch(() => null);
+      tableExists = !!checkTable;
+    } else {
+      // SQLite
+      const checkTable = await db.queryOne<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='roles';"
+      ).catch(() => null);
+      tableExists = !!checkTable;
+    }
 
-      const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
-      const seedSql = fs.readFileSync(seedPath, 'utf-8');
+    if (!tableExists) {
+      if (isPostgres) {
+        console.log('ℹ PostgreSQL / Supabase target detected without roles table.');
+        console.log('⚡ Running Supabase PostgreSQL schema migration & seed scripts is recommended via database/schema.sql.');
+      } else {
+        console.log('⚡ Initializing MedTrack database schema and seed records...');
 
-      // Execute schema statements split by semicolon
-      await executeMultiStatementSql(schemaSql);
-      await executeMultiStatementSql(seedSql);
+        const schemaPath = path.join(__dirname, '../../../database/schema.sql');
+        const seedPath = path.join(__dirname, '../../../database/seed.sql');
 
-      console.log('✅ Database successfully initialized with 22 3NF entities and seed accounts!');
+        if (fs.existsSync(schemaPath) && fs.existsSync(seedPath)) {
+          const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
+          const seedSql = fs.readFileSync(seedPath, 'utf-8');
+
+          await executeMultiStatementSql(schemaSql);
+          await executeMultiStatementSql(seedSql);
+          console.log('✅ Database successfully initialized with 3NF entities and seed accounts!');
+        }
+      }
     } else {
       console.log('✔ Database existing schema verified.');
     }
+
+    // Always run non-destructive incremental migrations
+    await migrateDatabase().catch((err) => {
+      console.warn('Notice: migrateDatabase completed with non-fatal notice:', err.message);
+    });
   } catch (error) {
     console.error('❌ Failed to initialize database:', error);
   }
